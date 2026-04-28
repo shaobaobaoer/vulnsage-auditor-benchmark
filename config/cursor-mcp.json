@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "vulnsage-codeql": {
+      "command": "node",
+      "args": ["engines/codeql-mcp/dist/server.js"],
+      "_comment": "Path will be resolved to absolute by install-plugins.sh"
+    }
+  }
+}

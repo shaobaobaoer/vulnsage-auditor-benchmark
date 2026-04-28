@@ -1,0 +1,46 @@
+# Runtime outputs
+results/
+!results/.gitkeep
+
+# Cloned source code
+fixtures/*/workspace/
+fixtures/*/source/
+
+# Node modules
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Docker
+*.tar
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*~
+*.swp
+*.swo
+
+# Environment configuration
+.env
+.env.local
+.env.*.local
+*.local
+
+# Reports (保留.gitkeep 占位文件)
+reports/
+!reports/.gitkeep
