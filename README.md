@@ -19,16 +19,24 @@
 ```
 vulnsage-auditor-benchmark/
 ├── README.md
-├── .gitignore
-└── fixtures/                   # 200 个 CVE fixture
-    └── {lang}-sast-{CVE}/
-        ├── meta.json           # CVE 元信息
-        ├── clone.sh            # 克隆漏洞版本代码
-        ├── Dockerfile          # Docker 环境
-        ├── entrypoint.sh       # 入口脚本
-        └── expected/           # 期望输出
-            ├── vuln_report.json      # 漏洞报告
-            └── verification.json     # 验证结果
+├── sast-bench-filtered.json    # 原始数据源
+├── scripts/                    # 评估与分析脚本
+│   ├── generate-fixtures.py    # 从数据源生成 fixtures + examples
+│   ├── evaluate.py             # 评估审计结果（对比 GT）
+│   ├── analyze-failures.sh     # 失败样本分析
+│   └── generate-examples.sh    # 从失败分析 CSV 生成 example JSON
+├── examples/                   # 200 个任务定义 JSON
+│   └── {lang}-sast-{CVE}.json
+├── fixtures/                   # 200 个 CVE fixture
+│   └── {lang}-sast-{CVE}/
+│       ├── meta.json           # CVE 元信息
+│       ├── clone.sh            # 克隆漏洞版本代码
+│       ├── Dockerfile          # Docker 环境
+│       ├── entrypoint.sh       # 入口脚本
+│       └── expected/           # 期望输出
+│           ├── vuln_report.json      # 漏洞报告（含 data_flow）
+│           └── verification.json     # 验证结果
+└── reports/                    # 评估报告输出目录
 ```
 
 ## Fixture 命名规范
@@ -42,6 +50,57 @@ vulnsage-auditor-benchmark/
 ## 漏洞类型分布
 
 涵盖 SSRF、Path Traversal、XSS、SQL Injection、Command Injection、Open Redirect、Code Injection 等多种漏洞类型。
+
+## 脚本说明
+
+### evaluate.py — 评估审计结果
+
+对比审计器输出与 ground truth，计算命中率。
+
+**匹配逻辑**：
+1. 从 GT 的 `data_flow`（含 source/sink）提取所有路径节点 `(file, line)`
+2. 文件路径**精确匹配**（normalize 后）
+3. 实际报告中**任意 finding 的 sink** 落在 GT 路径上任一节点 ±N 行内即算 **HIT**
+4. 行号偏移容忍度可配置（`--line-tolerance`，默认 5）
+
+```bash
+# 基本用法：评估某个 batch 的 PASS 样本
+python3 scripts/evaluate.py \
+  --workspace-dir ../vulnsage-auditor-claude-orchestrator/workspaces \
+  --batch-log-dir ../vulnsage-auditor-claude-orchestrator/logs/batch/20260429_191338 \
+  --line-tolerance 5
+
+# 输出所有格式（终端表格 + CSV + Markdown）
+python3 scripts/evaluate.py \
+  --workspace-dir ../vulnsage-auditor-cursor-orchestrator/workspaces \
+  --examples-dir examples/ \
+  --format all \
+  --output-dir reports/
+
+# 评估所有样本（不仅 PASS）
+python3 scripts/evaluate.py \
+  --workspace-dir ../vulnsage-auditor-claude-orchestrator/workspaces \
+  --batch-log-dir ../vulnsage-auditor-claude-orchestrator/logs/batch/20260429_191338 \
+  --status-filter ALL
+```
+
+### analyze-failures.sh — 失败样本分析
+
+```bash
+./scripts/analyze-failures.sh <batch-log-dir> <workspaces-dir> [output-dir]
+```
+
+### generate-examples.sh — 从失败分析 CSV 生成 example JSON
+
+```bash
+./scripts/generate-examples.sh <csv-file> [output-dir]
+```
+
+### generate-fixtures.py — 从数据源生成 fixtures 和 examples
+
+```bash
+python3 scripts/generate-fixtures.py [--dry-run]
+```
 
 ## License
 
