@@ -110,6 +110,50 @@ def normalize_path(p: str) -> str:
     return p
 
 
+# Minimum number of common trailing path segments required for "suffix match".
+# Example: 'a/b/c/Foo.java' vs 'x/y/c/Foo.java' share 2 trailing segments
+# ('c/Foo.java'), which is enough for a tolerant match in multi-module repos.
+MIN_SUFFIX_SEGMENTS = 2
+
+
+def _files_match(actual: str, gt: str) -> bool:
+    """Tolerant file-path comparison.
+
+    Two normalized paths are considered the same file when EITHER:
+      1. They are exactly equal (post-normalization), OR
+      2. They share at least MIN_SUFFIX_SEGMENTS common trailing path
+         segments AND the basename matches.
+
+    This handles multi-module repos where actual & GT differ only in module
+    prefix (e.g. 'dhis-2/dhis-services/.../X.java' vs
+    'dhis-services/.../X.java').
+
+    Pure basename match is intentionally NOT enough — it would cause false
+    positives (e.g. two unrelated `Util.java` files in different modules).
+    """
+    if not actual or not gt:
+        return False
+    if actual == gt:
+        return True
+
+    a_parts = actual.split("/")
+    g_parts = gt.split("/")
+
+    # Basename must match
+    if a_parts[-1] != g_parts[-1]:
+        return False
+
+    # Count common trailing segments
+    common = 0
+    for a_seg, g_seg in zip(reversed(a_parts), reversed(g_parts)):
+        if a_seg == g_seg:
+            common += 1
+        else:
+            break
+
+    return common >= MIN_SUFFIX_SEGMENTS
+
+
 # ---------------------------------------------------------------------------
 # Vulnerability type normalization (auxiliary info only)
 # ---------------------------------------------------------------------------
@@ -329,6 +373,14 @@ def evaluate_sample(
 
     gt_type_norm = normalize_vuln_type(gt_vuln_type)
 
+    # R7 fix: when GT meta.json has empty `vuln_type` (e.g. python fixtures
+    # historically shipped with vuln_type=""), do NOT penalize type matching.
+    # Treat absence of GT type as "any actual type matches".
+    # Post-mortem: ~10 cases — mostly python — were marked vuln_type_match=False
+    # purely because GT had no type to compare against, even when the file/line
+    # match was perfect. This propagates downstream into the precision metric.
+    gt_type_absent = (not gt_type_norm) or gt_type_norm in ("", "unknown")
+
     best_distance = None
 
     for finding in actual_findings:
@@ -346,8 +398,9 @@ def evaluate_sample(
 
         # Check against all GT path points
         for gp in gt_path_points:
-            # Exact file match
-            if act_file != gp.file:
+            # Tolerant file match: exact OR shared trailing segments (handles
+            # multi-module repos where prefix differs)
+            if not _files_match(act_file, gp.file):
                 continue
 
             dist = abs(act_line - gp.line)
@@ -361,7 +414,11 @@ def evaluate_sample(
                     result.matched_finding_sink_line = act_line
                     result.matched_line_distance = dist
                     result.actual_vuln_type = act_type_raw
-                    result.vuln_type_match = (gt_type_norm == act_type_norm)
+                    # R7 fix: when GT type is absent, any actual type counts as a match.
+                    if gt_type_absent:
+                        result.vuln_type_match = True
+                    else:
+                        result.vuln_type_match = (gt_type_norm == act_type_norm)
 
     if result.hit:
         parts = []
@@ -383,7 +440,7 @@ def evaluate_sample(
             if not af:
                 continue
             for gp in gt_path_points:
-                if af == gp.file:
+                if _files_match(af, gp.file):
                     d = abs(al - gp.line)
                     if closest_line_dist is None or d < closest_line_dist:
                         closest_line_dist = d
