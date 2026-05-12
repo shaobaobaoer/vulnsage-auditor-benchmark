@@ -58,10 +58,16 @@ vulnsage-auditor-benchmark/
 对比审计器输出与 ground truth，计算命中率。
 
 **匹配逻辑**：
-1. 从 GT 的 `data_flow`（含 source/sink）提取所有路径节点 `(file, line)`
-2. 文件路径**精确匹配**（normalize 后）
+1. 从 GT 的 `sink` + `data_flow` 提取路径节点 `(file, line)`（**不含 source**，避免将模型 sink 命中 GT source 误判为正确）
+2. 文件路径**精确匹配**（normalize 后，支持后缀段容忍匹配）
 3. 实际报告中**任意 finding 的 sink** 落在 GT 路径上任一节点 ±N 行内即算 **HIT**
 4. 行号偏移容忍度可配置（`--line-tolerance`，默认 5）
+
+### 当前召回率
+
+> **150 / 187 = 80.2%**（基于 200 样本中可用的 187 个，±5 行容忍度）
+>
+> 未命中 37 个样本待持续优化。
 
 ```bash
 # 基本用法：评估某个 batch 的 PASS 样本

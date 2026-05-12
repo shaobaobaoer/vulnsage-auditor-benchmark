@@ -301,6 +301,14 @@
                 "EndLine": 38,
                 "Desc": "汇点：调用 `func(r)` 触发危险操作，污点参数被消费（结果写入 `host`）。 代码: `func (r *DomainCtx) Origin() string { host := r.PublicHost if host == \"\" { host = r.InstanceHost } return fmt.Sprintf(\"%...`",
                 "code": "func (r *DomainCtx) Origin() string {\n\thost := r.PublicHost\n\tif host == \"\" {\n\t\thost = r.InstanceHost\n\t}\n\treturn fmt.Sprintf(\"%s://%s\", r.Protocol, host)\n}"
+              },
+              {
+                "Type": "Sink",
+                "File": "internal/api/ui/login/init_password_handler.go",
+                "StartLine": 45,
+                "EndLine": 45,
+                "Desc": "汇点（真实消费点）：构造 password reset link 并通过邮件发送，污点 host 在此被使用拼接成发送给用户的链接。代码: `link := externalLink(authReq, l.IDPConfig.IssuerURL) + l.renderer.pathPrefix + EndpointInitPassword + \"?\" + queryInitPasswordCode + \"=\" + code`",
+                "code": ""
               }
             ],
             "confidence": 0.99,
@@ -787,7 +795,7 @@
                 "code": "filename := file.Filename\n\t\tfiletype := file.Header.Get(\"Content-Type\")\n\t\tsize := file.Size"
               },
               {
-                "Type": "Propagation",
+                "Type": "Source",
                 "File": "server/resource.go",
                 "StartLine": 59,
                 "EndLine": 65,
@@ -809,6 +817,14 @@
                 "EndLine": 272,
                 "Desc": "汇点：调用 `HasPrefix(resource)` 触发危险操作，污点参数被消费（结果写入 `age`）。 代码: `if strings.HasPrefix(resource.Type, echo.MIMETextHTML) { c.Response().Writer.Header().Set(\"Content-Type\", echo.MIMETextP...`",
                 "code": "if strings.HasPrefix(resource.Type, echo.MIMETextHTML) {\n\t\t\tc.Response().Writer.Header().Set(\"Content-Type\", echo.MIMETextPlain)\n\t\t} else {\n\t\t\tc.Response().Writer.Header().Set(\"Content-Type\", resource.Type)\n\t\t}\n\t\tc.Response().Writer.WriteHeader(http.StatusOK)\n\t\tc.Response().Writer.Header().Set(echo.HeaderCacheControl, \"max-age=31536000, immutable\")"
+              },
+              {
+                "Type": "Sink",
+                "File": "server/resource.go",
+                "StartLine": 273,
+                "EndLine": 273,
+                "Desc": "汇点（真正的 XSS 输出点）：在同一函数内 `c.Response().Write(resource.Blob)` 实际将带毒内容写入 HTTP 响应体，触发存储型 XSS。代码: `if _, err := c.Response().Writer.Write(resource.Blob); err != nil { ...`",
+                "code": ""
               }
             ],
             "confidence": 0.99,
@@ -2883,7 +2899,7 @@
                 "File": "routers/web/auth/auth.go",
                 "StartLine": 132,
                 "EndLine": 137,
-                "Desc": "源点：变量 `redirectTo` 通过 `SetRedirectToCookie()` 接收外部输入并成为污点源。代码: `redirectTo := ctx.FormString(\"redirect_to\") if len(redirectTo) > 0 { middleware.SetRedirectToCookie(ctx.Resp, redirectTo...`",
+                "Desc": "源点：变量 `redirectTo` 通过 `ctx.FormString(\"redirect_to\")` 接收外部输入并成为污点源。",
                 "code": "redirectTo := ctx.FormString(\"redirect_to\")\n\tif len(redirectTo) > 0 {\n\t\tmiddleware.SetRedirectToCookie(ctx.Resp, redirectTo)\n\t} else {\n\t\tredirectTo = ctx.GetCookie(\"redirect_to\")\n\t}"
               },
               {
@@ -2891,16 +2907,24 @@
                 "File": "routers/web/auth/auth.go",
                 "StartLine": 141,
                 "EndLine": 141,
-                "Desc": "传播点：数据在 `RedirectToFirst()` 调用链中继续传递/变换。代码: `ctx.RedirectToFirst(redirectTo, setting.AppSubURL+string(setting.LandingPageURL))`",
+                "Desc": "传播点：数据在 `ctx.RedirectToFirst(redirectTo, ...)` 调用中传递到 context 模块。",
                 "code": "ctx.RedirectToFirst(redirectTo, setting.AppSubURL+string(setting.LandingPageURL))"
+              },
+              {
+                "Type": "Propagation",
+                "File": "modules/context/context.go",
+                "StartLine": 178,
+                "EndLine": 178,
+                "Desc": "函数入口：RedirectToFirst(location ...string) 接收污点参数。",
+                "code": ""
               },
               {
                 "Type": "Sink",
                 "File": "modules/context/context.go",
-                "StartLine": 177,
-                "EndLine": 194,
-                "Desc": "汇点：调用 `func(ctx)` 触发危险操作，污点在此触达危险 API。代码: `// RedirectToFirst redirects to first not empty URL func (ctx *Context) RedirectToFirst(location ...string) { for _, loc...`",
-                "code": "// RedirectToFirst redirects to first not empty URL\nfunc (ctx *Context) RedirectToFirst(location ...string) {\n\tfor _, loc := range location {\n\t\tif len(loc) == 0 {\n\t\t\tcontinue\n\t\t}\n\n\t\tu, err := url.Parse(loc)\n\t\tif err != nil || ((u.Scheme != \"\" || u.Host != \"\") && !strings.HasPrefix(strings.ToLower(loc), strings.ToLower(setting.AppURL))) {\n\t\t\tcontinue\n\t\t}\n\n\t\tctx.Redirect(loc)\n\t\treturn\n\t}\n\n\tctx.Redirect(setting.AppSubURL + \"/\")\n}"
+                "StartLine": 189,
+                "EndLine": 189,
+                "Desc": "汇点：ctx.Redirect(loc) 执行重定向，HasPrefix 校验可通过 protocol-relative URL 绕过。",
+                "code": ""
               }
             ],
             "confidence": 0.95,
@@ -4893,11 +4917,11 @@
               },
               {
                 "Type": "Sink",
-                "File": "kernel/go.mod",
-                "StartLine": 11,
-                "EndLine": 11,
-                "Desc": "汇点：污点数据在此进入危险执行路径。代码: `github.com/88250/lute v1.7.7-0.20260321150117-91fef4014208`",
-                "code": "github.com/88250/lute v1.7.7-0.20260321150117-91fef4014208"
+                "File": "kernel/model/import.go",
+                "StartLine": 185,
+                "EndLine": 185,
+                "Desc": "汇点（真实漏洞点）：在 .sy.zip 导入流程中通过 `SetIALAttr` 写入 IAL 属性时未做 EscapeAttrVal 转义，CVE 官方修复正是在此处补充转义。代码: `n.SetIALAttr(\"id\", n.ID); n.SetIALAttr(\"updated\", util.TimeFromID(n.ID))`",
+                "code": ""
               }
             ],
             "confidence": 0.85,
@@ -6577,6 +6601,14 @@
                 "EndLine": 253,
                 "Desc": "汇点：调用 `equals(order)` 触发危险操作，污点参数被消费（结果写入 `orderClause`）。 代码: `} else { /* Check if the order parameter is a valid \"asc\" or \"desc\" string, otherwise use \"asc\" */ if (\"asc\".equals(orde...`",
                 "code": "} else {\n                /* Check if the order parameter is a valid \"asc\" or \"desc\" string, otherwise use \"asc\" */\n                if (\"asc\".equals(order) || \"desc\".equals(order)) {\n                    orderClause = String.format(\"doc.%s %s\", orderField, order);\n                } else {\n                    orderClause = String.format(\"doc.%s asc\", orderField);\n                }\n            }"
+              },
+              {
+                "Type": "Sink",
+                "File": "xwiki-platform-core/xwiki-platform-rest/xwiki-platform-rest-server/src/main/java/org/xwiki/rest/internal/resources/BaseSearchResult.java",
+                "StartLine": 258,
+                "EndLine": 258,
+                "Desc": "汇点（真正的 HQL 执行点）：在同一方法内通过 `Query.executeQuery()` 执行拼接了 orderField 的 HQL 查询，污点最终被数据库执行。代码: `Query query = queryManager.createQuery(queryString, Query.HQL); ... List<Object> queryResult = query.execute(); ...`",
+                "code": ""
               }
             ],
             "confidence": 0.99,
@@ -10338,6 +10370,14 @@
                 "code": "public SetValuedMap<String, String> getOrganisationUnitsAssociationsForCurrentUser( Set<String> programUids )\n    {\n\n        Set<String> userOrgUnitPaths = getUserOrgUnitPaths();\n\n        return jdbcTemplate.query(\n            queryBuilder.buildSqlQuery( programUids, userOrgUnitPaths, currentUserService.getCurrentUser() ),"
               },
               {
+                "Type": "Propagation",
+                "File": "dhis-2/dhis-services/dhis-service-core/src/main/java/org/hisp/dhis/program/jdbc/JdbcProgramOrgUnitAssociationsStore.java",
+                "StartLine": 77,
+                "EndLine": 77,
+                "Desc": "传播点：在同一方法内通过 `jdbcTemplate.query(sql, ...)` 执行包含污点的 SQL，是真正的 SQL 执行点。代码: `jdbcTemplate.query( sql, ( ResultSet rs ) -> { while ( rs.next() ) { ...`",
+                "code": ""
+              },
+              {
                 "Type": "Sink",
                 "File": "dhis-2/dhis-services/dhis-service-core/src/main/java/org/hisp/dhis/association/ProgramOrganisationUnitAssociationsQueryBuilder.java",
                 "StartLine": 195,
@@ -11094,6 +11134,14 @@
                 "EndLine": 579,
                 "Desc": "汇点：污点数据在此进入危险执行路径。代码: `result = \"\\n\\n![\" + name + \"](\" + path + \")\";`",
                 "code": "result = \"\\n\\n![\" + name + \"](\" + path + \")\";"
+              },
+              {
+                "Type": "Sink",
+                "File": "test-track/backend/src/main/java/io/metersphere/service/wapper/IssueProxyResourceService.java",
+                "StartLine": 41,
+                "EndLine": 41,
+                "Desc": "汇点（另一真实 SSRF 链路）：通过 `restTemplate.exchange()` 直接执行用户可控的 URL 请求，未校验内部地址，导致 SSRF。代码: `ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.GET, entity, byte[].class);`",
+                "code": ""
               }
             ],
             "confidence": 0.99,
@@ -15950,8 +15998,16 @@
                 "File": "index.js",
                 "StartLine": 92,
                 "EndLine": 92,
-                "Desc": "汇点：调用 `stat(request)` 触发危险操作，污点在此触达危险 API。代码: `fs.stat(request.fullPath, statFile)`",
+                "Desc": "传播点：调用 `fs.stat(request.fullPath)` 检查文件是否存在，污点路径继续向下游传播。代码: `fs.stat(request.fullPath, statFile)`",
                 "code": "fs.stat(request.fullPath, statFile)"
+              },
+              {
+                "Type": "Sink",
+                "File": "index.js",
+                "StartLine": 102,
+                "EndLine": 102,
+                "Desc": "汇点：使用受污染路径读取文件内容并返回给用户，实际触发路径穿越导致敏感文件泄露。代码: `return filed(request.fullPath).pipe(res)`",
+                "code": ""
               }
             ],
             "confidence": 0.99,
@@ -23005,6 +23061,14 @@
                 "EndLine": 169,
                 "Desc": "汇点：调用 `run(command)` 触发危险操作，污点参数被消费（结果写入 `ret`）。 代码: `ret = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, timeout=timeout)`",
                 "code": "ret = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, timeout=timeout)"
+              },
+              {
+                "Type": "Sink",
+                "File": "indy_node/utils/node_control_utils.py",
+                "StartLine": 182,
+                "EndLine": 182,
+                "Desc": "备选汇点：另一条调用链（经 node_control_tool.py）最终调用 `run_shell_script`，同样使用 shell=True 执行命令。代码: `subprocess.run(command, shell=True, timeout=timeout, check=True)`",
+                "code": ""
               }
             ],
             "confidence": 0.99,

@@ -303,12 +303,16 @@ def _parse_location(location: str) -> tuple[str, int]:
 
 
 def build_gt_path_points(vuln_report: dict) -> list[PathPoint]:
-    """Extract all GT path points from a vuln_report.json.
+    """Extract GT path points from a vuln_report.json.
+
+    Only includes sink and data_flow nodes — source is intentionally excluded
+    because matching an actual finding's sink against a GT source would be a
+    false positive (the auditor should identify where the vulnerability
+    *manifests*, not where the tainted input *enters*).
 
     Sources:
-      1. Each finding's `source` field -> (file, line)
-      2. Each finding's `sink` field -> (file, line)
-      3. Each finding's `data_flow` array -> parse `location` as "file:line"
+      1. Each finding's `sink` field -> (file, line)
+      2. Each finding's `data_flow` array -> parse `location` as "file:line"
 
     Deduplicates by (normalized_file, line).
     """
@@ -325,10 +329,9 @@ def build_gt_path_points(vuln_report: dict) -> list[PathPoint]:
             points.append(PathPoint(file=nf, line=line))
 
     for finding in vuln_report.get("findings", []):
-        # Source
-        src = finding.get("source", {})
-        if src:
-            _add(src.get("file", ""), src.get("line", 0))
+        # Source — intentionally skipped to avoid false-positive path matches.
+        # The source (taint entry point) should not count as a valid match
+        # target for the auditor's sink output.
 
         # Sink
         sink = finding.get("sink", {})
